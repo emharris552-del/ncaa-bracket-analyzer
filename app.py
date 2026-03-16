@@ -53,7 +53,7 @@ try:
     else:
         st.error("📉 **The Quarterfinal Curse:** High seeds that failed to reach their Conference Semifinals.")
         # Fixed 2026 list based on final results
-        curse_list = ["Alabama", "Tennessee", "Kentucky", "Baylor", "Miami (OH)"]
+        curse_list = ["Alabama", "Tennessee", "Kentucky", "Baylor"]
         filtered = df_m[df_m['team'].isin(curse_list)]
         target_col, rank_col = 'team', 'rank'
 

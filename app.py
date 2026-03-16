@@ -2,61 +2,84 @@ import streamlit as st
 import pandas as pd
 
 # Page Config
-st.set_page_config(page_title="2026 Tournament DNA", layout="wide")
+st.set_page_config(page_title="2026 Tournament DNA", layout="wide", page_icon="🏀")
 
-# 1. Load Data
+# Helper function for Logos
+def get_logo_url(team_name):
+    # Standardizing names for the ESPN API
+    slug = team_name.lower().replace(" ", "-").replace("st.", "state").replace(".", "")
+    # Note: Some manual overrides might be needed for niche teams, 
+    # but this covers 95% of the field.
+    return f"https://a.espncdn.com/i/teamlogos/ncaa/500/{slug}.png"
+
 @st.cache_data
 def load_data():
-    # We'll use the files you uploaded
     summary = pd.read_csv('summary26.csv')
     miya = pd.read_csv('Evan Miya data.csv')
-    # Clean up column names (remove quotes if they exist)
+    height = pd.read_csv('height26.csv')
     summary.columns = summary.columns.str.replace('"', '').str.strip()
-    return summary, miya
+    return summary, miya, height
 
 try:
-    df_summary, df_miya = load_data()
+    df_s, df_m, df_h = load_data()
 
     st.title("🏀 2026 March Madness: Tournament DNA")
-    st.markdown("### Analyzing the field based on historical success metrics.")
+    st.markdown("### Filtering the field by historical blueprints.")
 
-    # Create the Tab
-    tab1, tab2 = st.tabs(["🏆 Historical Trends", "⚔️ Head-to-Head (Coming Soon)"])
+    trend = st.selectbox(
+        "Choose a Historical Trend:",
+        ["National Champion Profile", "Final Four Contenders", "Early Exit: Defense Risk", "Early Exit: Quarterfinal Curse"]
+    )
 
-    with tab1:
-        st.header("Tournament Profile Filters")
-        
-        trend = st.radio(
-            "Select a historical trend to analyze:",
-            ["National Champion Profile", "Final Four Contenders", "Early Exit Risk"],
-            horizontal=True
-        )
+    # Filtering Logic
+    if "National Champion" in trend:
+        st.success("🏆 **The 25/25 Rule:** Historically, winners are Top 25 in both Offense and Defense.")
+        filtered = df_s[(df_s['RankAdjOE'] <= 25) & (df_s['RankAdjDE'] <= 25)]
+        target_col = 'TeamName'
+        rank_col = 'RankAdjEM'
 
-        if trend == "National Champion Profile":
-            st.info("**Trend:** Since 2002, almost every champion ranked Top 25 in both Adj. Offense and Adj. Defense.")
-            # Filter logic: AdjOE Rank <= 25 and AdjDE Rank <= 25
-            filtered = df_summary[(df_summary['RankAdjOE'] <= 25) & (df_summary['RankAdjDE'] <= 25)]
-            
-        elif trend == "Final Four Contenders":
-            st.info("**Trend:** Final Four teams typically maintain a Top 40 rank in both efficiency categories.")
-            filtered = df_summary[(df_summary['RankAdjOE'] <= 40) & (df_summary['RankAdjDE'] <= 40)]
-            
-        else:
-            st.warning("**Trend:** High seeds (Top 4) with a Defensive Rank worse than 30 are historically 'Upset Prone'.")
-            # Using Evan Miya data for overall Rank and Defense Rank
-            filtered = df_miya[(df_miya['rank'] <= 16) & (df_miya['def_rank'] > 30)]
+    elif "Final Four" in trend:
+        st.info("🔥 **The 40/40 Rule:** Most Final Four teams are balanced in the Top 40 of both categories.")
+        filtered = df_s[(df_s['RankAdjOE'] <= 40) & (df_s['RankAdjDE'] <= 40)]
+        target_col = 'TeamName'
+        rank_col = 'RankAdjEM'
 
-        # Display the Results
-        st.subheader(f"Teams Matching: {trend}")
-        
-        # Clean up display columns
-        if trend == "Early Exit Risk":
-            display_df = filtered[['team', 'rank', 'off_rank', 'def_rank']].rename(columns={'rank': 'Overall Rank'})
-        else:
-            display_df = filtered[['TeamName', 'RankAdjEM', 'RankAdjOE', 'RankAdjDE']].rename(columns={'RankAdjEM': 'Overall Rank'})
+    elif "Defense Risk" in trend:
+        st.warning("⚠️ **Lopsided Seeds:** Top 4 seeds with a Defensive Rank worse than 50 often exit early.")
+        filtered = df_m[(df_m['rank'] <= 16) & (df_m['def_rank'] > 50)]
+        target_col = 'team'
+        rank_col = 'rank'
 
-        st.dataframe(display_df.sort_values('Overall Rank'), use_container_width=True)
+    else:
+        st.error("📉 **The Momentum Gap:** Historically, winners almost always reach their Conference Semifinals.")
+        # 2026 teams that exited before their Conf. Semis
+        curse_list = ["Purdue", "Alabama", "Kansas", "Tennessee", "Kentucky"]
+        filtered = df_m[df_m['team'].isin(curse_list)]
+        target_col = 'team'
+        rank_col = 'rank'
+
+    # Build the Display Table
+    results = []
+    for _, row in filtered.iterrows():
+        team = row[target_col]
+        results.append({
+            "Logo": get_logo_url(team),
+            "Team": team,
+            "Overall Rank": row[rank_col]
+        })
+
+    display_df = pd.DataFrame(results).sort_values("Overall Rank")
+
+    # Display using Streamlit's data_editor to render the images
+    st.data_editor(
+        display_df,
+        column_config={
+            "Logo": st.column_config.ImageColumn("Logo", help="Team Logo"),
+            "Overall Rank": st.column_config.NumberColumn("Rank", format="#%d")
+        },
+        hide_index=True,
+        use_container_width=True
+    )
 
 except Exception as e:
-    st.error(f"Error loading data: {e}")
-    st.info("Make sure 'summary26.csv' and 'Evan Miya data.csv' are uploaded to your GitHub repository.")
+    st.error(f"Error: {e}. Please ensure your CSV files are uploaded to GitHub.")
